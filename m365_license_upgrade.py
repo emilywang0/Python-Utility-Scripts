@@ -1,9 +1,9 @@
-#!/Library/Frameworks/Python.framework/Versions/3.12/bin/python3
-# ....
+#!/usr/bin/env python3
+# Author: ewang@atimi.com
+# Automates the process of finding and upgrading conditional users in Microsoft365
 
 import requests
 import json
-import sys, time
 
 tenant_id = "03d63788-8162-4380-bc13-c4efc557596a"
 client_id = "2f3b7c9f-66c8-47f5-8192-449fafe0e21e"
@@ -56,14 +56,6 @@ if users_response.status_code == 200:
             break
         url = next_link  # Move to the next page
         batch_num += 1
-        
-# users_response = requests.get(graph_api_endpoint + 'users', headers={
-#     'Authorization': 'Bearer ' + access_token,
-#     "Content-Type": "application/json"
-# })
-
-# if users_response.status_code == 200:
-#     users_data = users_response.json().get('value', [])
 
 ################################ Filter conditional users #####################################
     licensed_users = []
@@ -93,12 +85,16 @@ if users_response.status_code == 200:
                             print('Conditional user added...')
 
     # Display conditional users
-    if conditional_users:
-        print("\nConditional users:")
-        for user in conditional_users:
-            print(user['displayName'])
-    else:
-        print("No conditional users found.")
+    def print_list():
+        id_num = 1 
+        if conditional_users:
+            print("\nConditional users:")
+            for user in conditional_users:
+                print(f"{id_num}) {user['displayName']} - {user['mail']}")
+                id_num += 1
+        else:
+            print("No conditional users found.")
+
     # # Display licensed users
             
     # if licensed_users:
@@ -108,7 +104,7 @@ if users_response.status_code == 200:
     # else:
     #     print("No licensed users found.")
             
-
+    print_list()
 
 else:
     print(f"Failed to retrieve users. Status code: {users_response.status_code}")
@@ -116,7 +112,7 @@ else:
 ################################ Upgrade License #####################################
 
 # Helper function to upgrade license
-def upgrade_user(user):
+def upgrade_user(user, type):
     user_id = user['id']
     license_details_response = requests.get(graph_api_endpoint + f"users/{user_id}/licenseDetails", headers={
             'Authorization': 'Bearer ' + access_token,
@@ -124,67 +120,80 @@ def upgrade_user(user):
     })
 
     license = license_details_response.json().get('value')
-    for item in license:
-        servicePlan = item.get('servicePlans', [])
-        # Get all previously disabled plans
-        disabled_plans = [plan["servicePlanId"] for plan in servicePlan if "Disabled" in plan["provisioningStatus"]]
-    
-        # Plans to be enabled (add all previously disabled plans)
-        enabled_plans = [{"skuId": plan, "disabledPlans": []} for plan in disabled_plans]
-        
-        # Plans to be disabled
-        disabled_plans_to_disable = [plan["servicePlanId"] for plan in servicePlan if plan["servicePlanName"] in ["YAMMER_ENTERPRISE", "PROJECT_O365_P3", "MICROSOFTBOOKINGS"]]
+    item = license[0]
+    servicePlan = item.get('servicePlans', [])
+
+    disabledPlans = []
+    # Upgrade to Basic license
+    if (type == "basic"):
+        for plan in servicePlan: 
+            if plan["servicePlanName"] in ["YAMMER_ENTERPRISE", "PROJECT_O365_P1", "MICROSOFTBOOKINGS"]:
+                disabledPlans.append(plan["servicePlanId"])
         
         data = {
-            "addLicenses": enabled_plans,
-            "removeLicenses": [
+            "addLicenses": [
                 {
-                    "disabledPlans": disabled_plans_to_disable,
+                "disabledPlans": disabledPlans,
+                "skuId": "3b555118-da6a-4418-894f-7df1e2096870" # Business Essentials/Basic License
                 }
-            ]   
+            ],
+            "removeLicenses": []
         }
 
-        remove_response = requests.post(graph_api_endpoint + f"users/{user_id}/assignLicense", json=data, headers={
-            'Authorization': 'Bearer ' + access_token,
-            "Content-Type": "application/json"
-        })
+    # Upgrade to Standard license
+    if (type == "standard"):
+        # YAMMER_ENTERPRISE, PROJECT_0365_P2, DYN365BC_MS_INVOICING, O365_SB_Relationship_Management
+        disabledPlans = ["7547a3fe-08ee-4ccb-b430-5077c5041653", "31b4e2fc-4cd6-4e7d-9c1b-41407303bd66",
+                         "39b5c996-467e-4e60-bd62-46066f572726", "5bfe124c-bbdc-4494-8835-f1297d457d79"]
         
-        # Check remove_response status and handle accordingly
-        if remove_response.status_code == 200:
-            print(f"Upgrade for user {user['displayName']} successful.")
-            conditional_users.remove(user_to_upgrade)
-        else:
-            print(f"Upgrade for user {user['displayName']} failed. Status code: {remove_response.status_code}, Response: {remove_response.text}")
-        
+        data = {
+            "addLicenses": [
+                {
+                "disabledPlans": disabledPlans,
+                "skuId": "f245ecc8-75af-4f8e-b61f-27d8114de5f3" # Business Premium/Standard License
+                }
+            ],
+            "removeLicenses": ["3b555118-da6a-4418-894f-7df1e2096870"]
+        }
 
-
-while True:
-    user_input = input('Type "upgrade [Full Name]" or "quit": ')
+    remove_response = requests.post(graph_api_endpoint + f"users/{user_id}/assignLicense", json=data, headers={
+        'Authorization': 'Bearer ' + access_token,
+        "Content-Type": "application/json"
+    })
     
-    if user_input.lower().startswith("upgrade"):
-        parts = user_input.split(" ", 1)
-        if len(parts) == 2:
-            user_to_upgrade = parts[1].strip()
+    # Check remove_response status and handle accordingly
+    if remove_response.status_code == 200:
+        print(f"Upgrade for user {user['displayName']} successful.")
+        conditional_users.remove(user)
+    else:
+        print(f"Upgrade for user {user['displayName']} failed. Status code: {remove_response.status_code}, Response: {remove_response.text}")
+    
 
-            # Search within conditional_users for the user based on displayName
-            found_user = None
-            for user in conditional_users:
-                if user.get('displayName') == user_to_upgrade:
-                    found_user = user
-                    break
-                
-            if found_user:
-                print(f"Upgrading {user_to_upgrade}...")
-                # Perform upgrade action here (e.g., remove from conditional users list, perform upgrade process, etc.)
-                upgrade_user(found_user)
-            else:
-                print(f"{user_to_upgrade} is not a conditional user. Check spelling and capitalization of full name")
-        else:
-            print("Invalid input format. Please type 'upgrade [Full Name]'.")
+# Command-line prompts for actions
+while True:
+    user_input = input('Type "upgrade [Number] basic", "upgrade [Number] standard", or "quit": ')
 
-    elif user_input.lower() == "quit":
+    if user_input.lower() == "quit":
         print("Exiting the application.")
         break
 
+    if user_input.lower().startswith("upgrade"):
+        parts = user_input.split(" ")
+        if len(parts) == 3 and parts[2] in ["basic", "standard"]:
+            try:
+                user_number = int(parts[1]) - 1  # Adjust to zero-based index
+                user_to_upgrade = conditional_users[user_number]
+
+                upgrade_type = parts[2]
+                print(f"Upgrading {user_to_upgrade['displayName']} to {upgrade_type}...")
+                
+                # Call a function that handles the upgrade based on upgrade_type
+                upgrade_user(user_to_upgrade, upgrade_type)
+                
+                print_list()
+            except (ValueError, IndexError):
+                print("Invalid user number. Please type a valid number.")
+        else:
+            print('Invalid input format. Please type "upgrade [Number] basic" or "upgrade [Number] standard".')
     else:
-        print('Invalid command. Type "upgrade [Full Name]" or "quit" to exit.')
+        print('Invalid command. Type "upgrade [Number] basic", "upgrade [Number] standard" or "quit" to exit.')
