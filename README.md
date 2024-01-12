@@ -3,6 +3,7 @@
 - Once you have python installed, please open the terminal and run (depending on how you install your python, the name might be pip or pip3):
 ```
 python3 install -r requirement.txt 
+```
 
 ---
 
@@ -10,7 +11,14 @@ python3 install -r requirement.txt
 Conditional users should only have limited apps enabled, most notably with SharePoint turned off. However, once they are hired full-time, they should have either a Microsoft Basic license or Microsoft Standard license and be upgraded to have almost all apps enabled. This script automates the process of finding conditional users and upgrading their license plans.
 
 1. Make sure you have downloaded python and the requirement.txt file 
-2. Run on the Terminal: ./m365_license_upgrade.py or python3 m365_license_upgrade.py
+2. Run on the Terminal: 
+```
+./m365_license_upgrade.py
+```
+You can also try the following command if the previous is running into problems:
+```
+python3 m365_license_upgrade.py
+```
 3. Follow the command line prompts. You can upgrade one conditional user at a time.
 
 ---
